@@ -204,7 +204,7 @@ public class RequestParamMethodArgumentResolver extends AbstractNamedValueMethod
 			if (arg == null) {
 				String[] paramValues = webRequest.getParameterValues(name);
 				if (paramValues != null) {
-					arg = paramValues.length == 1 ? paramValues[0] : paramValues;
+					arg = (paramValues.length == 1 && !List.class.isAssignableFrom(parameter.getParameterType())) ? paramValues[0] : paramValues;
 				}
 			}
 		}
@@ -252,51 +252,38 @@ public class RequestParamMethodArgumentResolver extends AbstractNamedValueMethod
 
 	@Override
 	protected void handleMissingValue(String paramName, MethodParameter parameter) throws ServletException {
-		if (!parameter.getParameterType().getName().equals("java.util.Optional")) {
-			throw new MissingServletRequestParameterException(paramName, parameter.getParameterType().getSimpleName());
-		}
+		throw new MissingServletRequestParameterException(paramName, parameter.getParameterType().getSimpleName());
 	}
 
 	@Override
-	public void contributeMethodArgument(MethodParameter param, Object value,
+	public void contributeMethodArgument(MethodParameter parameter, Object value,
 			UriComponentsBuilder builder, Map<String, Object> uriVariables, ConversionService conversionService) {
 
-		Class<?> paramType = param.getParameterType();
+		Class<?> paramType = parameter.getParameterType();
 		if (Map.class.isAssignableFrom(paramType) || MultipartFile.class.equals(paramType) ||
 				"javax.servlet.http.Part".equals(paramType.getName())) {
 			return;
 		}
 
-		RequestParam annot = param.getParameterAnnotation(RequestParam.class);
-		String name = (annot == null || StringUtils.isEmpty(annot.value()) ? param.getParameterName() : annot.value());
+		RequestParam annot = parameter.getParameterAnnotation(RequestParam.class);
+		String name = StringUtils.isEmpty(annot.value()) ? parameter.getParameterName() : annot.value();
 
 		if (value == null) {
 			builder.queryParam(name);
 		}
 		else if (value instanceof Collection) {
 			for (Object element : (Collection<?>) value) {
-				element = formatUriValue(conversionService, TypeDescriptor.nested(param, 1), element);
+				element = formatUriValue(conversionService, TypeDescriptor.nested(parameter, 1), element);
 				builder.queryParam(name, element);
 			}
 		}
 		else {
-			builder.queryParam(name, formatUriValue(conversionService, new TypeDescriptor(param), value));
+			builder.queryParam(name, formatUriValue(conversionService, new TypeDescriptor(parameter), value));
 		}
 	}
 
 	protected String formatUriValue(ConversionService cs, TypeDescriptor sourceType, Object value) {
-		if (value == null) {
-			return null;
-		}
-		else if (value instanceof String) {
-			return (String) value;
-		}
-		else if (cs != null) {
-			return (String) cs.convert(value, sourceType, STRING_TYPE_DESCRIPTOR);
-		}
-		else {
-			return value.toString();
-		}
+		return (cs != null ? (String) cs.convert(value, sourceType, STRING_TYPE_DESCRIPTOR) : null);
 	}
 
 
